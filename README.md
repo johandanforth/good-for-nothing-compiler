@@ -41,5 +41,25 @@ This is the language specification defined in a simple EBNF style:
 <string> := " <string_elem>* "
 <string_elem> := <any char other than ">
 ```
+##Sample Programs##
+A simple program could look like this:
+```
+var x = 2;
+var y = 4;
+var z = y / x;
+print z;
+print "that's it folks!";
+```
+A program with a loop could look like this:
+```
+var ntimes = 0;
+print "How much do you love this company? (1-10) ";
+read_int ntimes;
+var x = 0;
+for x = 0 to ntimes do
+   print "Developers!";
+end;
+print "Who said sit down?!!!!!";
+```
 
 
