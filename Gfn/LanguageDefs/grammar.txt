@@ -1,0 +1,24 @@
+<stmt> := var <ident> = <expr>
+	| <ident> = <expr>
+	| for <ident> = <expr> to <expr> do <stmt> end
+	| read_int <ident>
+	| read_string <ident>
+	| print <expr>
+	| <stmt> ; <stmt>
+
+<expr> := <string>
+	| <int>
+	| <bin_expr>
+	| <ident>
+
+<arith_expr> := <expr> <arith_op> <expr>
+<arith_op> := + | - | * | /
+
+<ident> := <char> <ident_rest>*
+<ident_rest> := <char> | <digit>
+
+<int> := <digit>+
+<digit> := 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
+<string> := " <string_elem>* "
+<string_elem> := <any char other than ">
