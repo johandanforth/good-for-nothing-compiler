@@ -1,0 +1,5 @@
+var x = 2;
+var y = 4;
+var z = y / x;
+print z;
+print "that's it folks!";

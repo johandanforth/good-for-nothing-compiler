@@ -1,0 +1,8 @@
+var ntimes = 0;
+print "How much do you love this company? (1-10) ";
+read_int ntimes;
+var x = 0;
+for x = 0 to ntimes do
+   print "Developers!";
+end;
+print "Who said sit down?!!!!!";
