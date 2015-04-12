@@ -1,4 +1,5 @@
-using System.Data.Common;
+
+using System;
 
 public abstract class Stmt
 {
@@ -20,11 +21,11 @@ public class DeclareVar : Stmt
 // print <expr>
 public class Print : Stmt
 {
-    public Print( Expr expr)
+    public Print(Expr expr)
     {
         Expr = expr;
     }
-   public Expr Expr { get; set; }
+    public Expr Expr { get; private set; }
 }
 
 // <ident> = <expr>
@@ -46,13 +47,23 @@ public class ForLoop : Stmt
 // read_int <ident>
 public class ReadInt : Stmt
 {
-    public string Ident { get; set; }
+    public ReadInt(string ident)
+    {
+        Ident = ident;
+    }
+
+    public string Ident { get; private set; }
 }
 
 // read_string <ident>
 public class ReadString : Stmt
 {
-    public string Ident { get; set; }
+    public ReadString(string ident)
+    {
+        Ident = ident;
+    }
+
+    public string Ident { get; private set; }
 }
 
 // <stmt> ; <stmt>
@@ -70,6 +81,7 @@ public class Sequence : Stmt
 
 public abstract class Expr
 {
+    public abstract Type GetType();
 }
 
 // <string> := " <string_elem>* "
@@ -81,6 +93,10 @@ public class StringLiteral : Expr
     }
 
     public string Value { get; private set; }
+    public override Type GetType()
+    {
+        return typeof(string);
+    }
 }
 
 // <int> := <digit>+
@@ -92,6 +108,10 @@ public class IntLiteral : Expr
     }
 
     public int Value { get; private set; }
+    public override Type GetType()
+    {
+        return typeof(int);
+    }
 }
 
 // <ident> := <char> <ident_rest>*
@@ -104,18 +124,30 @@ public class Variable : Expr
     }
 
     public string Ident { get; private set; }
+    public override Type GetType()
+    {
+        if (!CodeGen.SymbolTable.ContainsKey(Ident)) throw new Exception("undeclared variable '" + Ident + "'");
+
+        var locb = CodeGen.SymbolTable[Ident];
+        return locb.LocalType;
+    }
 }
 
-// <bin_expr> := <expr> <bin_op> <expr>
-public class BinExpr : Expr
+// <arith_expr> := <expr> <arith_op> <expr>
+public class ArithExpr : Expr
 {
     public Expr Left { get; set; }
-    public BinOp Op { get; set; }
+    public ArithOp Op { get; set; }
     public Expr Right { get; set; }
+
+    public override Type GetType()
+    {
+        return Left.GetType();
+    }
 }
 
-// <bin_op> := + | - | * | /
-public enum BinOp
+// <arith_op> := + | - | * | /
+public enum ArithOp
 {
     Add,
     Sub,

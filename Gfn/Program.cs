@@ -15,22 +15,19 @@ internal static class Program
             return;
         }
 
-        try
-        {
-            Scanner scanner;
-            using (TextReader input = File.OpenText(args[0]))
-            {
-                scanner = new Scanner(input);
-            }
-            var parser = new Parser(scanner.Tokens);
+        var path = args[0];
+        var moduleName = Path.GetFileNameWithoutExtension(path) + ".exe";
 
-            var moduleName = Path.GetFileNameWithoutExtension(args[0]) + ".exe";
-            var codeGen = new CodeGen(parser.Result, moduleName);
-            codeGen.Compile();
-        }
-        catch (Exception e)
+        Scanner scanner;
+        using (TextReader input = File.OpenText(path))
         {
-            Console.Error.WriteLine(e.Message);
+            scanner = new Scanner(input);
         }
+        var parser = new Parser(scanner.Tokens);
+        parser.Parse();
+
+        var codeGen = new CodeGen(parser.Result, moduleName);
+        codeGen.Compile();
+        Console.WriteLine("Successfully compiled to " + moduleName);
     }
 }

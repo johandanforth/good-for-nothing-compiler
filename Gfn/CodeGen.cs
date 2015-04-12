@@ -1,22 +1,26 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Reflection.Emit;
-using Collections = System.Collections.Generic;
-using Reflect = System.Reflection;
+
+// ReSharper disable CanBeReplacedWithTryCastAndCheckForNull
 
 public sealed class CodeGen
 {
     private readonly AssemblyBuilder _asmb;
+    private readonly ILGenerator _il;
     private readonly MethodBuilder _methb;
     private readonly ModuleBuilder _modb;
     private readonly string _moduleName;
     private readonly Stmt _stmt;
+    public static Dictionary<string, LocalBuilder> SymbolTable;
     private readonly TypeBuilder _typeBuilder;
-    private ILGenerator _il;
-    private Collections.Dictionary<string, LocalBuilder> _symbolTable;
 
     public CodeGen(Stmt stmt, string moduleName)
     {
+        if (string.IsNullOrEmpty(moduleName)) throw new ArgumentException("must have a module name", "moduleName");
+
         _stmt = stmt;
         _moduleName = moduleName;
         if (Path.GetFileName(moduleName) != moduleName)
@@ -25,22 +29,20 @@ public sealed class CodeGen
         }
 
         var filename = Path.GetFileNameWithoutExtension(moduleName);
-        var asmName = new Reflect.AssemblyName(filename);
+        var asmName = new AssemblyName(filename);
         _asmb = AppDomain.CurrentDomain.DefineDynamicAssembly(asmName, AssemblyBuilderAccess.Save);
         _modb = _asmb.DefineDynamicModule(moduleName);
         _typeBuilder = _modb.DefineType("Foo");
 
-        _methb = _typeBuilder.DefineMethod("Main", Reflect.MethodAttributes.Static, typeof (void),
+        _methb = _typeBuilder.DefineMethod("Main", MethodAttributes.Static, typeof(void),
             Type.EmptyTypes);
 
-        // CodeGenerator
         _il = _methb.GetILGenerator();
-        _symbolTable = new Collections.Dictionary<string, LocalBuilder>();
+        SymbolTable = new Dictionary<string, LocalBuilder>();
     }
 
     public void Compile()
     {
-        // Go Compile!
         GenStmt(_stmt);
 
         _il.Emit(OpCodes.Ret);
@@ -55,7 +57,7 @@ public sealed class CodeGen
     {
         if (stmt is Sequence)
         {
-            var seq = (Sequence) stmt;
+            var seq = (Sequence)stmt;
             GenStmt(seq.First);
             GenStmt(seq.Second);
         }
@@ -63,47 +65,45 @@ public sealed class CodeGen
         else if (stmt is DeclareVar)
         {
             // declare a local
-            var declare = (DeclareVar) stmt;
-            _symbolTable[declare.Ident] = _il.DeclareLocal(TypeOfExpr(declare.Expr));
+            var declare = (DeclareVar)stmt;
+            SymbolTable[declare.Ident] = _il.DeclareLocal(declare.Expr.GetType());
 
             // set the initial value
-            var assign = new Assign();
-            assign.Ident = declare.Ident;
-            assign.Expr = declare.Expr;
+            var assign = new Assign { Ident = declare.Ident, Expr = declare.Expr };
             GenStmt(assign);
         }
 
         else if (stmt is Assign)
         {
-            var assign = (Assign) stmt;
-            GenerateLoadToStackForExpr(assign.Expr, TypeOfExpr(assign.Expr));
-            GenerateStoreFromStack(assign.Ident, TypeOfExpr(assign.Expr));
+            var assign = (Assign)stmt;
+            GenerateLoadToStackForExpr(assign.Expr, assign.Expr.GetType());
+            GenerateStoreFromStack(assign.Ident, assign.Expr.GetType());
         }
         else if (stmt is Print)
         {
             // the "print" statement is an alias for System.Console.WriteLine. 
             // it uses the string case
-            GenerateLoadToStackForExpr(((Print) stmt).Expr, typeof (string));
+            GenerateLoadToStackForExpr(((Print)stmt).Expr, typeof(string));
             //Generate console.writeline
-            _il.Emit(OpCodes.Call, typeof (Console).GetMethod("WriteLine", new[] {typeof (string)}));
+            _il.Emit(OpCodes.Call, typeof(Console).GetMethod("WriteLine", new[] { typeof(string) }));
         }
 
         else if (stmt is ReadInt)
         {
             _il.Emit(OpCodes.Call,
-                typeof (Console).GetMethod("ReadLine", Reflect.BindingFlags.Public | Reflect.BindingFlags.Static, null,
-                    new Type[] {}, null));
+                typeof(Console).GetMethod("ReadLine", BindingFlags.Public | BindingFlags.Static, null,
+                    new Type[] { }, null));
             _il.Emit(OpCodes.Call,
-                typeof (int).GetMethod("Parse", Reflect.BindingFlags.Public | Reflect.BindingFlags.Static, null,
-                    new[] {typeof (string)}, null));
-            GenerateStoreFromStack(((ReadInt) stmt).Ident, typeof (int));
+                typeof(int).GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, null,
+                    new[] { typeof(string) }, null));
+            GenerateStoreFromStack(((ReadInt)stmt).Ident, typeof(int));
         }
         else if (stmt is ReadString)
         {
             _il.Emit(OpCodes.Call,
-                typeof (Console).GetMethod("ReadLine", Reflect.BindingFlags.Public | Reflect.BindingFlags.Static, null,
-                    new Type[] {}, null));
-            GenerateStoreFromStack(((ReadString) stmt).Ident, typeof (string));
+                typeof(Console).GetMethod("ReadLine", BindingFlags.Public | BindingFlags.Static, null,
+                    new Type[] { }, null));
+            GenerateStoreFromStack(((ReadString)stmt).Ident, typeof(string));
         }
         else if (stmt is ForLoop)
         {
@@ -113,10 +113,8 @@ public sealed class CodeGen
             // end;
 
             // x = 0
-            var forLoop = (ForLoop) stmt;
-            var assign = new Assign();
-            assign.Ident = forLoop.Ident;
-            assign.Expr = forLoop.From;
+            var forLoop = (ForLoop)stmt;
+            var assign = new Assign { Ident = forLoop.Ident, Expr = forLoop.From };
             GenStmt(assign);
             // jump to the test
             var test = _il.DefineLabel();
@@ -128,15 +126,15 @@ public sealed class CodeGen
             GenStmt(forLoop.Body);
 
             // to (increment the value of x)
-            _il.Emit(OpCodes.Ldloc, _symbolTable[forLoop.Ident]);
+            _il.Emit(OpCodes.Ldloc, SymbolTable[forLoop.Ident]);
             _il.Emit(OpCodes.Ldc_I4, 1);
             _il.Emit(OpCodes.Add);
-            GenerateStoreFromStack(forLoop.Ident, typeof (int));
+            GenerateStoreFromStack(forLoop.Ident, typeof(int));
 
             // **test** does x equal 100? (do the test)
             _il.MarkLabel(test);
-            _il.Emit(OpCodes.Ldloc, _symbolTable[forLoop.Ident]);
-            GenerateLoadToStackForExpr(forLoop.To, typeof (int));
+            _il.Emit(OpCodes.Ldloc, SymbolTable[forLoop.Ident]);
+            GenerateLoadToStackForExpr(forLoop.To, typeof(int));
             _il.Emit(OpCodes.Blt, body);
         }
         else
@@ -147,24 +145,17 @@ public sealed class CodeGen
 
     private void GenerateStoreFromStack(string name, Type type)
     {
-        if (_symbolTable.ContainsKey(name))
-        {
-            var locb = _symbolTable[name];
-
-            if (locb.LocalType == type)
-            {
-                _il.Emit(OpCodes.Stloc, _symbolTable[name]);
-            }
-            else
-            {
-                throw new Exception("'" + name + "' is of type " + locb.LocalType.Name +
-                                    " but attempted to store value of type " + type.Name);
-            }
-        }
-        else
-        {
+        if (!SymbolTable.ContainsKey(name))
             throw new Exception("undeclared variable '" + name + "'");
-        }
+
+        var locb = SymbolTable[name];
+        var localType = locb.LocalType;
+        
+        if (localType != type)
+            throw new Exception(string.Format("'{0}' is of type {1} but attempted to store value of type {2}", name,
+                localType == null ? "<unknown>" : localType.Name, type.Name));
+
+        _il.Emit(OpCodes.Stloc, SymbolTable[name]);
     }
 
     private void GenerateLoadToStackForExpr(Expr expr, Type expectedType)
@@ -173,51 +164,51 @@ public sealed class CodeGen
 
         if (expr is StringLiteral)
         {
-            deliveredType = typeof (string);
-            _il.Emit(OpCodes.Ldstr, ((StringLiteral) expr).Value);
+            deliveredType = typeof(string);
+            _il.Emit(OpCodes.Ldstr, ((StringLiteral)expr).Value);
         }
         else if (expr is IntLiteral)
         {
-            deliveredType = typeof (int);
-            _il.Emit(OpCodes.Ldc_I4, ((IntLiteral) expr).Value);
+            deliveredType = typeof(int);
+            _il.Emit(OpCodes.Ldc_I4, ((IntLiteral)expr).Value);
         }
         else if (expr is Variable)
         {
-            var ident = ((Variable) expr).Ident;
-            deliveredType = TypeOfExpr(expr);
+            var ident = ((Variable)expr).Ident;
+            deliveredType = expr.GetType();
 
-            if (!_symbolTable.ContainsKey(ident))
+            if (!SymbolTable.ContainsKey(ident))
             {
                 throw new Exception("undeclared variable '" + ident + "'");
             }
 
-            _il.Emit(OpCodes.Ldloc, _symbolTable[ident]);
+            _il.Emit(OpCodes.Ldloc, SymbolTable[ident]);
         }
-        else if (expr is BinExpr)
+        else if (expr is ArithExpr)
         {
-            var binExpr = (BinExpr) expr;
-            var left = binExpr.Left;
-            var right = binExpr.Right;
-            deliveredType = TypeOfExpr(expr);
+            var arithExpr = (ArithExpr)expr;
+            var left = arithExpr.Left;
+            var right = arithExpr.Right;
+            deliveredType = expr.GetType();
 
             GenerateLoadToStackForExpr(left, expectedType);
             GenerateLoadToStackForExpr(right, expectedType);
-            switch (binExpr.Op)
+            switch (arithExpr.Op)
             {
-                case BinOp.Add:
+                case ArithOp.Add:
                     _il.Emit(OpCodes.Add);
                     break;
-                case BinOp.Sub:
+                case ArithOp.Sub:
                     _il.Emit(OpCodes.Sub);
                     break;
-                case BinOp.Mul:
+                case ArithOp.Mul:
                     _il.Emit(OpCodes.Mul);
                     break;
-                case BinOp.Div:
+                case ArithOp.Div:
                     _il.Emit(OpCodes.Div);
                     break;
                 default:
-                    throw new NotImplementedException("Don't know how to generate il load code for " + binExpr.Op +
+                    throw new NotImplementedException("Don't know how to generate il load code for " + arithExpr.Op +
                                                       " yet!");
             }
         }
@@ -226,48 +217,12 @@ public sealed class CodeGen
             throw new Exception("don't know how to generate " + expr.GetType().Name);
         }
 
-        if (deliveredType != expectedType)
-        {
-            if (deliveredType == typeof (int) &&
-                expectedType == typeof (string))
-            {
-                _il.Emit(OpCodes.Box, typeof (int));
-                _il.Emit(OpCodes.Callvirt, typeof (object).GetMethod("ToString"));
-            }
-            else
-            {
-                throw new Exception("can't coerce a " + deliveredType.Name + " to a " + expectedType.Name);
-            }
-        }
-    }
+        if (deliveredType == expectedType) return;
 
+        if (deliveredType != typeof (int) || expectedType != typeof (string))
+            throw new Exception("can't coerce a " + deliveredType.Name + " to a " + expectedType.Name);
 
-    private Type TypeOfExpr(Expr expr)
-    {
-        if (expr is StringLiteral)
-        {
-            return typeof (string);
-        }
-        if (expr is IntLiteral)
-        {
-            return typeof (int);
-        }
-        if (expr is Variable)
-        {
-            var var = (Variable) expr;
-            if (_symbolTable.ContainsKey(var.Ident))
-            {
-                var locb = _symbolTable[var.Ident];
-                return locb.LocalType;
-            }
-            throw new Exception("undeclared variable '" + var.Ident + "'");
-        }
-        if (expr is BinExpr)
-        {
-            //figure out what this expression returns by checking the left
-            var leftExpr = ((BinExpr) expr).Left;
-            return TypeOfExpr(leftExpr);
-        }
-        throw new Exception("don't know how to calculate the type of " + expr.GetType().Name);
+        _il.Emit(OpCodes.Box, typeof (int));
+        _il.Emit(OpCodes.Callvirt, typeof (object).GetMethod("ToString"));
     }
 }

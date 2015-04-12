@@ -2,4 +2,16 @@ var x = 2;
 var y = 4;
 var z = y / x;
 print z;
+print "enter a number";
+read_int x;
+print x;
+x = 12;
+for x = 1 to 3 do
+	print "loop";
+	print x;
+	for y = 1 to 3 do
+		print "loop in loop";
+		print y;
+	end;
+end;
 print "that's it folks!";
